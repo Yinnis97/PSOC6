@@ -7,7 +7,17 @@
 #include "cybsp.h"
 #include "cy_retarget_io.h"
 
-//Functions
+//----------------------------Globals---------------------------------------
+
+#define I2C_MASTER_FREQUENCY (400000u)
+#define Freq 10
+_Bool flag = false;
+uint8_t Duty = 50;
+cyhal_pwm_t pwm_obj;
+
+
+//----------------------------Functions-------------------------------------
+
 void Instructions(void)
 {
 	uint8_t i = 0;
@@ -26,21 +36,13 @@ void Instructions(void)
 	printf("\rButton PSOC = Start / Stop.\n\r");
 }
 
-
-//Globals
-
-#define Freq 10
-_Bool flag = false;
-uint8_t Duty = 50;
-cyhal_pwm_t pwm_obj;
-
-
 void isr_button(void* handler_arg,cyhal_gpio_event_t event)
 {
 	 flag=!flag;
 
 	 if(flag)
 	 {
+      cyhal_gpio_write(P13_7,0u);
 	  cyhal_gpio_write(P10_1, 1u);
 	  cyhal_gpio_write(P10_3, 0u);
 	  cyhal_pwm_start(&pwm_obj);
@@ -48,6 +50,7 @@ void isr_button(void* handler_arg,cyhal_gpio_event_t event)
 	 }
 	 else
 	 {
+	  cyhal_gpio_write(P13_7,1u);
 	  cyhal_gpio_write(P10_1, 0u);
 	  cyhal_gpio_write(P10_3, 0u);
 	  cyhal_pwm_stop(&pwm_obj);
@@ -129,6 +132,7 @@ void isr_button4(void* handler_arg,cyhal_gpio_event_t event)
 int main(void)
 {
 //----------------------------Local Declarations----------------------------
+	//Callback
 	cyhal_gpio_callback_data_t cb_data =
 	{
 	    .callback = isr_button,
@@ -150,13 +154,19 @@ int main(void)
 	    .callback = isr_button4,
 	};
 
+	//I2C
+	cyhal_i2c_t         i2c_master_obj;
+
+	cyhal_i2c_cfg_t i2c_master_config =
+	    { CYHAL_I2C_MODE_MASTER ,0 ,I2C_MASTER_FREQUENCY };
+
 //----------------------------Initializations-------------------------------
     cybsp_init();
     //Outputs
-    cyhal_gpio_init(P13_7, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, 1u);
-    cyhal_gpio_init(P12_1, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, 0u);
-    cyhal_gpio_init(P12_0, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, 0u);
-    cyhal_gpio_init(P12_3, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, 0u);
+    cyhal_gpio_init(P13_7, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, 1u); //Led voor aangeven dat de motor aan staat.
+    cyhal_gpio_init(P12_1, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, 0u); //Niet gebruikt
+    cyhal_gpio_init(P12_0, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, 0u); //Buzzer
+    cyhal_gpio_init(P12_3, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, 0u); //Niet gebruikt
     //Inputs
     cyhal_gpio_init(P0_4, CYHAL_GPIO_DIR_INPUT	, CYHAL_GPIO_DRIVE_NONE, 1u);
     cyhal_gpio_init(P9_1, CYHAL_GPIO_DIR_INPUT	, CYHAL_GPIO_DRIVE_NONE, 1u);
@@ -182,17 +192,55 @@ int main(void)
     cyhal_pwm_init(&pwm_obj, P10_0, NULL);
     cyhal_pwm_set_duty_cycle(&pwm_obj, Duty,Freq);
 
+    //I2C
+    uint8_t PrintTeller = 0;               // Teller voor printf (anders printen we teveel)
+    uint16_t Data;                         // 16Bit Data van sensor.
+    uint8_t VCNL4010_PROXIMITYDATA = 0x87; // Register for proximity.
+    uint8_t VCNL4010_M[2];
+    VCNL4010_M[0] = 0x80;                  // Command register.
+    VCNL4010_M[1] = 0x08;                  // Demand  proximity measurement.
+    cyhal_i2c_init(&i2c_master_obj, P6_1, P6_0, NULL);
+    cyhal_i2c_configure(&i2c_master_obj,&i2c_master_config);
+
     //Printf
     cy_retarget_io_init(CYBSP_DEBUG_UART_TX, CYBSP_DEBUG_UART_RX, CY_RETARGET_IO_BAUDRATE);
     __enable_irq();
+
 //--------------------------------------------------------------------------
 
     printf("\rWelcome\n\r");
+    Instructions();
 
     for (;;)
     {
+    	if(flag)
+    	{
+    	 cyhal_i2c_master_write(&i2c_master_obj, 0x13, &VCNL4010_M, 2, 0, true);
+    	 cyhal_i2c_master_write(&i2c_master_obj, 0x13, &VCNL4010_PROXIMITYDATA, 1u, 0, true);
+         cyhal_i2c_master_read(&i2c_master_obj,0x13,&Data, 2, 0, true);
+
+    	 Data = Data - 25352; //gaf 25352 bij niks. Geeft nu een waarde tussen 0 en ongeveer 65.000.
+         if(PrintTeller == 40)
+         {
+        	 printf("\r                                      Proximity_data = %u\n\r",Data);
+        	 PrintTeller = 0;
+         }
+
+    	 if( (Data > 45000) && (Data < 60000) )
+    	 {
+    		 flag=!flag;
+    		 cyhal_gpio_write(P10_1, 0u);
+    		 cyhal_gpio_write(P10_3, 0u);
+    		 cyhal_pwm_stop(&pwm_obj);
+    		 printf("\rStopped\n\r");
+    	 }
+    	 PrintTeller++;
+    	 cyhal_system_delay_ms(100);
+    	}
+
     	if(flag == false)
     	{
+    		cyhal_gpio_write(P13_7,1u);
     		printf("\rIn Sleepmode\n\r");
     		cyhal_syspm_sleep();
     	}
