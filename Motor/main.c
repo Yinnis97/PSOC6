@@ -23,11 +23,11 @@ void Instructions(void)
 	uint8_t i = 0;
 	while(i < 2)
 	{
-		cyhal_gpio_write(P12_0, 1u);
-		cyhal_system_delay_ms(150);
-		cyhal_gpio_write(P12_0, 0u);
-		cyhal_system_delay_ms(150);
-		i++;
+	 cyhal_gpio_write(P12_0, 1u);
+	 cyhal_system_delay_ms(150);
+	 cyhal_gpio_write(P12_0, 0u);
+	 cyhal_system_delay_ms(150);
+	 i++;
 	}
 	printf("\rButton 1    = Decrease Duty Cycle.\n\r");
 	printf("\rButton 2    = Increase Duty Cycle.\n\r");
@@ -89,7 +89,7 @@ void isr_button2(void* handler_arg,cyhal_gpio_event_t event)
 	 cyhal_pwm_set_duty_cycle(&pwm_obj, Duty,Freq);
 	 printf("\rDuty Increased.\n\r");
 	 printf("\rDuty = %d%%\n\r",Duty);
-    }
+     }
      else
      {
       printf("\rPress The On Button First!\n\r");
@@ -162,17 +162,20 @@ int main(void)
 
 //----------------------------Initializations-------------------------------
     cybsp_init();
+
     //Outputs
     cyhal_gpio_init(P13_7, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, 1u); //Led voor aangeven dat de motor aan staat.
     cyhal_gpio_init(P12_1, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, 0u); //Niet gebruikt
     cyhal_gpio_init(P12_0, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, 0u); //Buzzer
     cyhal_gpio_init(P12_3, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, 0u); //Niet gebruikt
+
     //Inputs
-    cyhal_gpio_init(P0_4, CYHAL_GPIO_DIR_INPUT	, CYHAL_GPIO_DRIVE_NONE, 1u);
-    cyhal_gpio_init(P9_1, CYHAL_GPIO_DIR_INPUT	, CYHAL_GPIO_DRIVE_NONE, 1u);
-    cyhal_gpio_init(P9_4, CYHAL_GPIO_DIR_INPUT	, CYHAL_GPIO_DRIVE_NONE, 1u);
-    cyhal_gpio_init(P9_7, CYHAL_GPIO_DIR_INPUT	, CYHAL_GPIO_DRIVE_NONE, 1u);
-    cyhal_gpio_init(P9_6, CYHAL_GPIO_DIR_INPUT	, CYHAL_GPIO_DRIVE_NONE, 1u);
+    cyhal_gpio_init(P0_4, CYHAL_GPIO_DIR_INPUT	, CYHAL_GPIO_DRIVE_NONE, 1u);   //Button Start/Stop
+    cyhal_gpio_init(P9_1, CYHAL_GPIO_DIR_INPUT	, CYHAL_GPIO_DRIVE_NONE, 1u);   //BUtton 1
+    cyhal_gpio_init(P9_4, CYHAL_GPIO_DIR_INPUT	, CYHAL_GPIO_DRIVE_NONE, 1u);   //Button 2
+    cyhal_gpio_init(P9_7, CYHAL_GPIO_DIR_INPUT	, CYHAL_GPIO_DRIVE_NONE, 1u);   //Button 3
+    cyhal_gpio_init(P9_6, CYHAL_GPIO_DIR_INPUT	, CYHAL_GPIO_DRIVE_NONE, 1u);   //Button 4
+
     //Callback
     cyhal_gpio_register_callback(P0_4, &cb_data);
     cyhal_gpio_enable_event(P0_4, CYHAL_GPIO_IRQ_FALL, 3, true);
@@ -188,6 +191,7 @@ int main(void)
     //Motor Pinnen
     cyhal_gpio_init(P10_1, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, 1u);
     cyhal_gpio_init(P10_3, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, 1u);
+
     //PWM
     cyhal_pwm_init(&pwm_obj, P10_0, NULL);
     cyhal_pwm_set_duty_cycle(&pwm_obj, Duty,Freq);
@@ -195,7 +199,7 @@ int main(void)
     //I2C
     uint8_t PrintTeller = 0;               // Teller voor printf (anders printen we teveel)
     uint16_t Data;                         // 16Bit Data van sensor.
-    uint8_t VCNL4010_PROXIMITYDATA = 0x87; // Register for proximity.
+    uint8_t VCNL4010_PROXIMITYDATA = 0x87; // Register for proximity measurement.
     uint8_t VCNL4010_M[2];
     VCNL4010_M[0] = 0x80;                  // Command register.
     VCNL4010_M[1] = 0x08;                  // Demand  proximity measurement.
@@ -209,6 +213,7 @@ int main(void)
 //--------------------------------------------------------------------------
 
     printf("\rWelcome\n\r");
+
     Instructions();
 
     for (;;)
@@ -219,8 +224,8 @@ int main(void)
     	 cyhal_i2c_master_write(&i2c_master_obj, 0x13, &VCNL4010_PROXIMITYDATA, 1u, 0, true);
          cyhal_i2c_master_read(&i2c_master_obj,0x13,&Data, 2, 0, true);
 
-    	 Data = Data - 25352; //gaf 25352 bij niks. Geeft nu een waarde tussen 0 en ongeveer 65.000.
-         if(PrintTeller == 40)
+    	 Data = Data - 25352;  //gaf 25352 bij niks. Geeft nu een waarde tussen 0 en ongeveer 65.535.
+         if(PrintTeller == 40) //Na 40 * 100ms = 4000ms = 4Sec een printf.
          {
         	 printf("\r                                      Proximity_data = %u\n\r",Data);
         	 PrintTeller = 0;
@@ -242,7 +247,7 @@ int main(void)
     	{
     		cyhal_gpio_write(P13_7,1u);
     		printf("\rIn Sleepmode\n\r");
-    		cyhal_syspm_sleep();
+    		cyhal_syspm_sleep();          //Sleepmode wnr de motorsturing niet actief is.
     	}
 
     }
